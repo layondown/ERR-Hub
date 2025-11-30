@@ -1,0 +1,793 @@
+local Rayfield = loadstring(game:HttpGet('https://ERR.Hub/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+   Name = "ERR Hub",
+   Icon = 0, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
+   LoadingTitle = "ERR HUB",
+   LoadingSubtitle = "by •script hub•",
+   ShowText = "Rayfield", -- for mobile users to unhide rayfield, change if you'd like
+   Theme = "Default", -- Check https://docs.sirius.menu/rayfield/configuration/themes
+
+   ToggleUIKeybind = "K", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
+
+   DisableRayfieldPrompts = false,
+   DisableBuildWarnings = false, -- Prevents Rayfield from warning when the script has a version mismatch with the interface
+
+   ConfigurationSaving = {
+      Enabled = true,
+      FolderName = nil, -- Create a custom folder for your hub/game
+      FileName = "Big Hub"
+   },
+
+   Discord = {
+      Enabled = false, -- Prompt the user to join your Discord server if their executor supports it
+      Invite = "noinvitelink", -- discord.gg/QE4pxbfRFp
+      RememberJoins = true -- Set this to false to make them join the discord every time they load it up
+   }
+})
+
+-- Anti-Ragdoll Replaced with Blackhole Feature
+local Debris = workspace:WaitForChild("Debris")
+local TARGET_SIZE = Vector3.new(1e5, 1e5, 1e5) -- tamanho desejado
+
+local function getClosestPlayer()
+    local closest = nil
+    local smallestDist = math.huge
+
+    local myChar = player.Character
+    if not myChar then return end
+    local myHRP = myChar:FindFirstChild("HumanoidRootPart")
+    if not myHRP then return end
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local theirHRP = plr.Character.HumanoidRootPart
+            local dist = (myHRP.Position - theirHRP.Position).Magnitude
+
+            if dist < smallestDist then
+                smallestDist = dist
+                closest = plr
+            end
+        end
+    end
+
+    return closest
+end
+
+local function teleportPlayerToMain(mainPart)
+    local target = getClosestPlayer()
+    if not target then return end
+
+    local targetChar = target.Character
+    if not targetChar then return end
+
+    local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+    if not targetHRP then return end
+
+    -- Teleporta o player alvo para cima do Main
+    targetHRP.CFrame = mainPart.CFrame + Vector3.new(0, 6, 0)
+end
+
+local blackholeConnection = nil
+
+local function setupAntiRagdoll()
+    if blackholeConnection then
+        blackholeConnection:Disconnect()
+        blackholeConnection = nil
+    end
+    
+    if state.AntiRagdoll then
+        blackholeConnection = Debris.ChildAdded:Connect(function(child)
+            if child.Name == "Blackhole" then
+                task.spawn(function()
+                    local main = child:WaitForChild("Main", 3)
+                    if main and main:IsA("BasePart") then
+                        
+                        -- AUMENTAR O TAMANHO DO MAIN
+                        main.Size = TARGET_SIZE
+
+                        -- Teleportar o alvo
+                        teleportPlayerToMain(main)
+                    end
+                end)
+            end
+        end)
+    end
+end
+
+-- PvP Bat: Equip bat and click at 40ms when target is 8 meters away
+local hitboxOutlines = {}
+local pvpBatConnection = nil
+local lastBatClick = 0
+local BAT_CLICK_INTERVAL = 0.04 -- 40ms
+
+local function setupPvPBat()
+    if pvpBatConnection then
+        pvpBatConnection:Disconnect()
+    end
+    
+    pvpBatConnection = RunService.Heartbeat:Connect(function()
+        local char = player.Character
+        if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+        local hrp = char.HumanoidRootPart
+
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local root = plr.Character.HumanoidRootPart
+                local distance = (hrp.Position - root.Position).Magnitude
+
+                if state["PvP Bat"] then
+                    local humanoid = char:FindFirstChild("Humanoid")
+                    local backpack = player:FindFirstChild("Backpack")
+                    
+                    -- Auto equip bat
+                    if humanoid and backpack then
+                        for _, tool in ipairs(backpack:GetChildren()) do
+                            if tool:IsA("Tool") and tool.Name:lower():find("bat") and not char:FindFirstChild(tool.Name) then
+                                pcall(function() 
+                                    if humanoid.Health > 0 then
+                                        humanoid:EquipTool(tool)
+                                    end
+                                end)
+                            end
+                        end
+                    end
+                    
+                    -- Hitbox outline
+                    if not hitboxOutlines[root] then
+                        local box = Instance.new("BoxHandleAdornment")
+                        box.Adornee = root
+                        box.Size = Vector3.new(4,6,2)
+                        box.Color3 = Color3.fromRGB(255,0,0)
+                        box.Transparency = 0.5
+                        box.AlwaysOnTop = true
+                        box.ZIndex = 10
+                        box.Parent = root
+                        hitboxOutlines[root] = box
+                    end
+                    
+                    -- Click at 40ms when target is 8 meters or closer
+                    if distance <= 8 then
+                        local currentTime = tick()
+                        if currentTime - lastBatClick >= BAT_CLICK_INTERVAL then
+                            for _, tool in ipairs(char:GetChildren()) do
+                                if tool:IsA("Tool") and tool.Name:lower():find("bat") then
+                                    pcall(function() 
+                                        if humanoid and humanoid.Health > 0 then
+                                            tool:Activate()
+                                            lastBatClick = currentTime
+                                        end
+                                    end)
+                                end
+                            end
+                        end
+                    end
+                else
+                    -- Clean up hitbox when disabled
+                    if hitboxOutlines[root] then
+                        hitboxOutlines[root]:Destroy()
+                        hitboxOutlines[root] = nil
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Jump Boost (UPDATED: 75 jump power)
+UserInputService.JumpRequest:Connect(function()
+    if state.JumpBoost then
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            hrp.Velocity = Vector3.new(hrp.Velocity.X, 75, hrp.Velocity.Z) -- Changed from 50 to 75
+        end
+    end
+end)
+
+-- Speed Boost (UPDATED: 29 walk speed)
+local speedBoostConnection
+speedBoostConnection = RunService.Heartbeat:Connect(function()
+    local char = player.Character
+    if char and char:FindFirstChild("Humanoid") then
+        local humanoid = char.Humanoid
+        if state.SpeedBoost then
+            humanoid.WalkSpeed = 29 -- Changed from 30 to 29
+        else
+            humanoid.WalkSpeed = 16 -- Default speed
+        end
+    end
+end)
+
+-- Auto Spammer
+RunService.RenderStepped:Connect(function()
+    if state["Auto Spammer"] then
+        local char = player.Character
+        if char then
+            for _, tool in ipairs(char:GetChildren()) do
+                if tool:IsA("Tool") then
+                    pcall(function() tool:Activate() end)
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Grab Brainrots
+local function grabBrainrots()
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = char.HumanoidRootPart
+
+    for _, obj in ipairs(Workspace:GetChildren()) do
+        if obj:IsA("Model") then
+            if string.find(obj.Name:lower(), "brainrot") then
+                local rootPart = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChildWhichIsA("BasePart")
+                if rootPart then
+                    local dist = (hrp.Position - rootPart.Position).Magnitude
+                    if dist <= 10 then
+                        local prompt = rootPart:FindFirstChildOfClass("ProximityPrompt")
+                        if not prompt then
+                            prompt = Instance.new("ProximityPrompt")
+                            prompt.ActionText = "Steal"
+                            prompt.ObjectText = "Brainrot"
+                            prompt.HoldDuration = 0
+                            prompt.KeyboardKeyCode = Enum.KeyCode.E
+                            prompt.Parent = rootPart
+                        end
+                        fireproximityprompt(prompt)
+                    end
+                end
+            end
+        end
+    end
+end
+
+spawn(function()
+    while true do
+        RunService.RenderStepped:Wait()
+        if state["Auto Grab"] then
+            grabBrainrots()
+        end
+    end
+end)
+
+-- Stare at Opponent
+local lastStareUpdate = 0
+local stareConnection = nil
+
+local function setupStareAtOpponent()
+    if stareConnection then
+        stareConnection:Disconnect()
+        stareConnection = nil
+    end
+    
+    stareConnection = RunService.Heartbeat:Connect(function()
+        if state["Stare at Opponent"] then
+            local currentTime = tick()
+            
+            if currentTime - lastStareUpdate >= 0.001 then
+                local char = player.Character
+                if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+                    local hrp = char.HumanoidRootPart
+                    local humanoid = char.Humanoid
+                    
+                    if humanoid.Health <= 0 then return end
+                    
+                    local closestTarget = nil
+                    local closestDist = math.huge
+                    
+                    for _, plr in pairs(Players:GetPlayers()) do
+                        if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") and plr.Character:FindFirstChild("Humanoid") then
+                            local targetHRP = plr.Character.HumanoidRootPart
+                            local targetHumanoid = plr.Character.Humanoid
+                            local dist = (hrp.Position - targetHRP.Position).Magnitude
+                            
+                            if dist < closestDist and targetHumanoid.Health > 0 and dist < 100 then
+                                closestDist = dist
+                                closestTarget = targetHRP
+                            end
+                        end
+                    end
+
+                    if closestTarget and humanoid.Health > 0 then
+                        local targetPos = closestTarget.Position
+                        local currentPos = hrp.Position
+                        
+                        -- Only rotate the upper body, don't move the character
+                        local lookVector = (Vector3.new(targetPos.X, currentPos.Y, targetPos.Z) - currentPos).Unit
+                        
+                        -- Only apply rotation, keep position the same
+                        hrp.CFrame = CFrame.new(currentPos, currentPos + lookVector)
+                        
+                        lastStareUpdate = currentTime
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Splatter Hit Feature
+local splatterHitConnection = nil
+local lastSplatterHit = 0
+local SPLATTER_HIT_INTERVAL = 0.001 -- 1ms
+local SPLATTER_HOLD_TIME = 0.04 -- 40ms
+
+-- Function to execute splatter hit
+local function executeSplatterHit()
+    local char = player.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    
+    local hrp = char.HumanoidRootPart
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return end
+    
+    local currentTime = tick()
+    if currentTime - lastSplatterHit >= SPLATTER_HIT_INTERVAL then
+        local backpack = player:FindFirstChild("Backpack")
+        local splatterTool = nil
+        
+        -- Find splatter slap in backpack
+        if backpack then
+            for _, tool in ipairs(backpack:GetChildren()) do
+                if tool:IsA("Tool") and (tool.Name:lower():find("splatter") or tool.Name:lower():find("slap")) then
+                    splatterTool = tool
+                    break
+                end
+            end
+        end
+        
+        -- Equip and use splatter tool
+        if splatterTool then
+            -- Equip the tool
+            if not char:FindFirstChild(splatterTool.Name) then
+                humanoid:EquipTool(splatterTool)
+            end
+            
+            -- Click immediately
+            local equippedTool = char:FindFirstChild(splatterTool.Name)
+            if equippedTool then
+                equippedTool:Activate()
+                lastSplatterHit = currentTime
+                
+                -- Unequip after 40ms
+                spawn(function()
+                    wait(SPLATTER_HOLD_TIME)
+                    if equippedTool and equippedTool.Parent == char then
+                        humanoid:UnequipTools()
+                    end
+                end)
+            end
+        end
+    end
+end
+
+local function setupSplatterHit()
+    if splatterHitConnection then
+        splatterHitConnection:Disconnect()
+    end
+    
+    splatterHitConnection = RunService.Heartbeat:Connect(function()
+        if state["Splatter Hit"] then
+            local char = player.Character
+            if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+            
+            local hrp = char.HumanoidRootPart
+            
+            -- Check for nearby players
+            local targetInRange = false
+            for _, plr in pairs(Players:GetPlayers()) do
+                if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetHRP = plr.Character.HumanoidRootPart
+                    local distance = (hrp.Position - targetHRP.Position).Magnitude
+                    
+                    if distance <= 10 then -- 10 stud range
+                        targetInRange = true
+                        break
+                    end
+                end
+            end
+            
+            if targetInRange then
+                executeSplatterHit()
+            end
+        end
+    end)
+end
+
+-- Desync Feature - Safe Network Manipulation (No Fling)
+local desyncConnection = nil
+
+local function setupDesync()
+    if desyncConnection then
+        desyncConnection:Disconnect()
+        desyncConnection = nil
+    end
+    
+    if state.Desync then
+        desyncConnection = RunService.Heartbeat:Connect(function()
+            local char = player.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                local hrp = char.HumanoidRootPart
+                
+                -- Method 1: Network ownership manipulation (safer)
+                pcall(function()
+                    -- Temporarily change network ownership to create desync
+                    hrp:SetNetworkOwner(nil)
+                    wait(0.01)
+                    hrp:SetNetworkOwner(player)
+                end)
+                
+                -- Method 2: Very subtle rotation changes (even safer)
+                local currentCFrame = hrp.CFrame
+                local subtleRotation = CFrame.Angles(
+                    0,
+                    math.rad(math.random(-5, 5)), -- Very small rotation
+                    0
+                )
+                
+                hrp.CFrame = currentCFrame * subtleRotation
+                
+                -- Wait briefly
+                wait(0.03)
+            end
+        end)
+    end
+end
+
+-- Quantum Cloner Feature - Fixed with Clone Creation
+local quantumClonerConnection = nil
+local lastQuantumClick = 0
+local QUANTUM_CLICK_INTERVAL = 0.001 -- 1ms (1000 clicks per second)
+local QUANTUM_HOLD_TIME = 2.0 -- Hold for 2 seconds
+local quantumHoldStart = 0
+local isHoldingQuantum = false
+local lastChangeClick = 0
+local CHANGE_CLICK_INTERVAL = 1.0 -- Click Change every 1 second
+
+local function findAndEquipQuantumCloner()
+    local char = player.Character
+    if not char then return false end
+    
+    local humanoid = char:FindFirstChild("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return false end
+    
+    local backpack = player:FindFirstChild("Backpack")
+    if not backpack then return false end
+    
+    -- Look for Quantum Cloner in backpack (case insensitive)
+    local quantumCloner = nil
+    for _, tool in ipairs(backpack:GetChildren()) do
+        if tool:IsA("Tool") and string.lower(tool.Name):find("quantum") then
+            quantumCloner = tool
+            break
+        end
+    end
+    
+    -- Also check if already equipped
+    if not quantumCloner then
+        for _, tool in ipairs(char:GetChildren()) do
+            if tool:IsA("Tool") and string.lower(tool.Name):find("quantum") then
+                quantumCloner = tool
+                break
+            end
+        end
+    end
+    
+    -- Equip the tool if found and not already equipped
+    if quantumCloner and not char:FindFirstChild(quantumCloner.Name) then
+        humanoid:EquipTool(quantumCloner)
+        print("Quantum Cloner equipped successfully!")
+        return true
+    elseif quantumCloner then
+        return true
+    end
+    
+    return false
+end
+
+local function activateQuantumCloner()
+    local char = player.Character
+    if not char then return false end
+    
+    -- Find equipped Quantum Cloner
+    local quantumCloner = nil
+    for _, tool in ipairs(char:GetChildren()) do
+        if tool:IsA("Tool") and string.lower(tool.Name):find("quantum") then
+            quantumCloner = tool
+            break
+        end
+    end
+    
+    -- Activate the tool if found
+    if quantumCloner then
+        local currentTime = tick()
+        
+        -- Start holding if not already holding
+        if not isHoldingQuantum then
+            isHoldingQuantum = true
+            quantumHoldStart = currentTime
+            quantumCloner:Activate()
+            
+            -- Create clone when quantum cloner is activated
+            createClone()
+        else
+            -- Continue holding
+            quantumCloner:Activate()
+        end
+        
+        -- Check if 2 seconds have passed
+        if currentTime - quantumHoldStart >= QUANTUM_HOLD_TIME then
+            isHoldingQuantum = false
+        end
+        
+        return true
+    end
+    
+    return false
+end
+
+-- NEW: Better Change text detection using GetGUIs
+local function findChangeText()
+    -- Method 1: Search through all GUIs recursively
+    local function searchGuiRecursive(gui)
+        for _, child in ipairs(gui:GetDescendants()) do
+            if child:IsA("TextLabel") or child:IsA("TextButton") then
+                if string.lower(child.Text):find("change") then
+                    return child
+                end
+            end
+        end
+        return nil
+    end
+    
+    -- Check CoreGui
+    for _, gui in ipairs(CoreGui:GetChildren()) do
+        if gui:IsA("ScreenGui") then
+            local changeText = searchGuiRecursive(gui)
+            if changeText then
+                return changeText
+            end
+        end
+    end
+    
+    -- Check PlayerGui
+    local playerGui = player:FindFirstChild("PlayerGui")
+    if playerGui then
+        for _, gui in ipairs(playerGui:GetChildren()) do
+            if gui:IsA("ScreenGui") then
+                local changeText = searchGuiRecursive(gui)
+                if changeText then
+                    return changeText
+                end
+            end
+        end
+    end
+    
+    -- Check StarterGui
+    local starterGui = game:GetService("StarterGui")
+    for _, gui in ipairs(starterGui:GetChildren()) do
+        if gui:IsA("ScreenGui") then
+            local changeText = searchGuiRecursive(gui)
+            if changeText then
+                return changeText
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- NEW: Improved clicking method with 20px offset
+local function clickChangeText()
+    local changeText = findChangeText()
+    if not changeText then
+        return false
+    end
+    
+    print("Found Change text: " .. changeText.Text)
+    
+    -- Get screen position
+    local absolutePosition = changeText.AbsolutePosition
+    local absoluteSize = changeText.AbsoluteSize
+    
+    if absolutePosition and absoluteSize then
+        -- Calculate click position (center of text, 20 pixels above)
+        local clickX = absolutePosition.X + (absoluteSize.X / 2)
+        local clickY = absolutePosition.Y - 20 -- 20 pixels above
+        
+        print("Clicking at position: " .. math.floor(clickX) .. ", " .. math.floor(clickY))
+        
+        -- Method 1: Try to fire button events if it's a TextButton (most reliable)
+        if changeText:IsA("TextButton") then
+            pcall(function()
+                -- Try multiple event types to ensure click registers
+                changeText:Fire("MouseButton1Down")
+                wait(0.02)
+                changeText:Fire("MouseButton1Click")
+                wait(0.02)
+                changeText:Fire("MouseButton1Up")
+                print("Successfully clicked Change button via direct events")
+                return true
+            end)
+        end
+        
+        -- Method 2: Use VirtualInputManager for precise clicking
+        pcall(function()
+            local virtualInput = game:GetService("VirtualInputManager")
+            
+            -- Move mouse to position with multiple movements for reliability
+            for i = 1, 3 do
+                virtualInput:SendMouseMoveEvent(clickX, clickY)
+                wait(0.01)
+            end
+            
+            -- Mouse down with longer hold
+            virtualInput:SendMouseButtonEvent(clickX, clickY, 0, true)
+            wait(0.05) -- Longer hold time
+            
+            -- Mouse up
+            virtualInput:SendMouseButtonEvent(clickX, clickY, 0, false)
+            
+            print("Successfully clicked via VirtualInputManager with 20px offset")
+            return true
+        end)
+        
+        -- Method 3: Try activating the parent frame if it's a button
+        if changeText.Parent and changeText.Parent:IsA("TextButton") then
+            pcall(function()
+                changeText.Parent:Fire("MouseButton1Click")
+                print("Clicked parent button instead")
+                return true
+            end)
+        end
+        
+        return true
+    end
+    
+    return false
+end
+
+local function setupQuantumCloner()
+    if quantumClonerConnection then
+        quantumClonerConnection:Disconnect()
+        quantumClonerConnection = nil
+        -- DON'T reset isHoldingQuantum here - this was causing the reset
+    end
+    
+    if state["Quantum Cloner"] then
+        quantumClonerConnection = RunService.Heartbeat:Connect(function()
+            local currentTime = tick()
+            
+            -- First, make sure Quantum Cloner is equipped
+            local equipped = findAndEquipQuantumCloner()
+            
+            if equipped then
+                -- Click at 1ms intervals (ULTRA FAST)
+                if currentTime - lastQuantumClick >= QUANTUM_CLICK_INTERVAL then
+                    activateQuantumCloner()
+                    lastQuantumClick = currentTime
+                end
+                
+                -- Try to click Change text every second
+                if currentTime - lastChangeClick >= CHANGE_CLICK_INTERVAL then
+                    print("Attempting to find and click Change text...")
+                    
+                    -- Try the improved clicking method
+                    local success = clickChangeText()
+                    
+                    if success then
+                        print("Successfully interacted with Change element!")
+                    else
+                        print("Change text not found or couldn't be clicked")
+                    end
+                    
+                    lastChangeClick = currentTime
+                end
+            else
+                print("Quantum Cloner not found - searching...")
+            end
+        end)
+        
+        -- Immediate equip when toggled on
+        findAndEquipQuantumCloner()
+    else
+        -- Only reset when actually turning OFF the feature
+        if isHoldingQuantum then
+            isHoldingQuantum = false
+            quantumHoldStart = 0
+        end
+    end
+end
+
+-- L Key activation for Splatter Hit
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.KeyCode == Enum.KeyCode.L and not gameProcessed then
+        executeSplatterHit()
+        print("L key pressed - Splatter Hit activated!")
+    end
+end)
+
+
+-- Initialize all features
+spawn(function()
+    wait(5)
+    setupPvPBat()
+    setupStareAtOpponent()
+    setupSplatterHit()
+end)
+
+-- Update feature states when toggled
+spawn(function()
+    while true do
+        wait(0.1)
+        -- Update AntiRagdoll
+        if state.AntiRagdoll then
+            setupAntiRagdoll()
+        else
+            if blackholeConnection then
+                blackholeConnection:Disconnect()
+                blackholeConnection = nil
+            end
+        end
+        
+        -- Update Desync
+        if state.Desync then
+            setupDesync()
+        else
+            if desyncConnection then
+                desyncConnection:Disconnect()
+                desyncConnection = nil
+            end
+        end
+        
+        -- Update Quantum Cloner
+        if state["Quantum Cloner"] then
+            setupQuantumCloner()
+        else
+            if quantumClonerConnection then
+                quantumClonerConnection:Disconnect()
+                quantumClonerConnection = nil
+            end
+        end
+        
+        -- Update FPS Devourer
+        if state["FPS Devourer"] then
+            setupFPSDevourer()
+        else
+            if fpsDevourerConnection then
+                fpsDevourerConnection:Disconnect()
+                fpsDevourerConnection = nil
+            end
+        end
+    end
+end)
+
+-- Character handling for all features including Anti-Die and FPS Devourer
+player.CharacterAdded:Connect(function(character)
+    wait(2)
+    setupPvPBat()
+    setupStareAtOpponent()
+    setupSplatterHit()
+    if state.AntiRagdoll then
+        setupAntiRagdoll()
+    end
+    if state.Desync then
+        setupDesync()
+    end
+    if state["Quantum Cloner"] then
+        setupQuantumCloner()
+    end
+    if state["Anti-Die"] then
+        setupAntiDie(character)
+    end
+    if state["FPS Devourer"] then
+        setupFPSDevourer()
+    end
+end)
+
+-- Load GUI immediately
+spawn(loadGUI)
+
+print("ERR HUB fully integrated and loaded! FPS Devourer now works properly and Quantum Cloner creates clones beside you!")
